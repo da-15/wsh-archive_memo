@@ -1,0 +1,256 @@
+<!--
+2016.08.01 kuroda 作業メモファイルを作成する
+
+-->
+
+<job id="cf_cc">
+<script language="VBScript">
+	function vbinput(msg)
+		vbinput = InputBox(msg) 'ユーザ入力値を返す
+	end function
+</script>
+
+<script language="JavaScript">
+	//作成するファイルのフォーマット。
+	//[$date]には、YYYYMMDDにて日付が入ります。
+	//[$time]には、hhmissにて時刻が入ります。
+	//[$name]には、引数で指定されたファイル名が入ります。
+	//[$user]には、ローカルPCのユーザIDが入ります。
+	var strFileNameFormat = 'memo [$date] [$name].txt';
+	
+	//生成したファイル内の先頭行に書き込む文字列。（改行を入れたい場合は\nで指定）
+	var strFirstLine = '【タイトル】\n[$name]\n\n【備考】\n'; 
+	//var strFirstLine = ''; 
+	
+	//テキストエディタのパスを指定する。\は→\\とする。または、/で指定する。
+	var pathTextEditor = 'C:\\Program Files (x86)\\gPad\\gPad.exe';
+	//例）gPad   'C:\\Program Files (x86)\\gPad\\gPad.exe';
+	//例）メモ帳 'C:\\windows\\notepad.exe';
+	
+	//エディタ起動にかかる時間を調整
+	//（カーソル移動が上手く動かない場合は、ここの数値を上げてみる）
+	var exeTime = 300;
+	
+	//ファイルの保存先を指定する
+	//指定がない場合は本ファイルの置き場所がファイルの保存先になる
+	var strFolderToSave = '';
+	
+	//ファイル生成後にエディターを開く場合はTrue、何もしない場合はfalseを指定
+	var openEditor = true;
+	
+	//ファイル名として不正な記号（\/:*?"<>|）が指定された場合に置き換える文字
+	var REPLACE_NG_CHAR = '-';
+	
+	//ファイル名が指定されなかった場合の文字列
+	var REPLACE_NO_TITLE = '';
+	
+	//-----------------------------------------------
+	// メッセージ 
+	var msg = new Array(10);
+	msg[0]='ファイルが既に存在しています。\n\nファイル名[[$file_name]]';
+	msg[1]='テキストエディタのオープンに失敗しました。\n\nファイル名[[$editor_name]]';
+	msg[2]='引数の指定が不正です。デフォルトのファイル名で開きます。';
+	msg[3]='処理内容（タイトル）を入力してください。';
+	msg[4]='保存先に指定されたディレクトリが存在しません。';
+	msg[5]='';
+	msg[6]='';
+	msg[7]='';
+	msg[8]='';
+	msg[9]='';
+	
+	
+	//--------------------------------------------------
+	// メイン処理
+	var fso; 
+	var newFile; 
+	var objParm;
+	var strDate; //日付 yyyymmdd
+	var strTime; //時刻 hhmiss
+	var strFileName; //生成するファイル名
+	var strMemoName; //引数に指定されたファイル名
+	var strUserID; //ローカルPCのユーザID
+	
+	// ファイルの保存先に移動
+	if(strFolderToSave != ''){
+		// ファイルの保存先に移動する
+		if(setCurrentDir(strFolderToSave) == false){
+			WScript.Echo(msg[4]); //フォルダが存在しなかった場合
+			WScript.Quit();
+		}
+	}
+	
+	//引数をチェック -- ファイル名を取得
+	objParm = WScript.arguments;
+	if(objParm.length > 1){
+		//引数が不正（複数指定された場合）
+		strMemoName = REPLACE_NO_TITLE;
+		WScript.Echo(msg[2]);
+	} else if(objParm.length < 1){
+		//引数なし
+		
+		//ダイアログによる入力
+		strMemoName = vbinput(msg[3]);
+		if(strMemoName == ''){
+			//空入力
+			strMemoName = REPLACE_NO_TITLE;
+		}
+		else if(strMemoName == null){
+			//キャンセル押下
+			WScript.Quit();
+		}
+	} else{
+		//引数あり
+		strMemoName = objParm(0);
+	}
+	
+	//日付を取得yyyymmdd
+	strDate = getFormatedDate(new Date());
+	//時刻を取得 hhmiss
+	strTime = getFormatedTime(new Date());
+	
+	//ユーザIDを取得
+	if(strFileNameFormat.indexOf('[$user]') >= 0){
+		strUserID = getLocalUserID();
+	}
+	
+	//ファイル名を取得
+	strFileName = strFileNameFormat;
+	strFileName = strFileName.replace('[$date]', strDate);
+	strFileName = strFileName.replace('[$time]', strTime);
+	strFileName = strFileName.replace('[$user]', strUserID);
+	strFileName = strFileName.replace('[$name]', strMemoName);
+	
+	//ファイルに不適切な記号を-に置き換え
+	strFileName = strFileName.replace(/[\/:*?"<>|]/g, REPLACE_NG_CHAR);
+	
+	//ファイルの先頭行に書きこむ文字列を取得
+	strFirstLine = strFirstLine.replace('[$name]', strMemoName);
+	strFirstLine = strFirstLine.replace(/\n/g, unescape('%0D%0A'));
+	
+	//ファイルを生成する
+	fso = new ActiveXObject('Scripting.FileSystemObject');
+	
+	//ファイルの存在チェック
+	if(fso.FileExists(strFileName) == false){
+		//CreateTextFileの第3引数 True=S-JIS False=UTF-16
+		newFile = fso.CreateTextFile(strFileName, false, true);
+		
+		//ファイルに書き込む
+		newFile.Write(strFirstLine);
+		newFile.Close();
+		
+	}else{
+		//ファイルが既に存在している場合
+		WScript.Echo(msg[0].replace('[$file_name]', strFileName));
+	}
+	
+	if(openEditor){
+		//ファイルをオープンする
+		try{
+			var objShell;
+			objShell = new ActiveXObject('WScript.Shell');
+			//エディタ起動
+			objShell.Run('"' + pathTextEditor + '" "' +  strFileName + '"');
+			//文末にカーソルを移動
+			WScript.Sleep(exeTime);
+			objShell.SendKeys('^{END}');
+		}
+		catch(e){
+			WScript.Echo(msg[1].replace('[$editor_name]', pathTextEditor));
+			WScript.Echo('' + e.number);
+		}
+	}
+	
+	
+	
+	
+	// --------------------------------------------------
+	// カレントディレクトリを変更する
+	function setCurrentDir(strPath){
+		var fso = new ActiveXObject('Scripting.FileSystemObject');
+		var sh = new ActiveXObject('WScript.Shell');
+		var isExist = false;
+		
+		if( fso.FolderExists(strPath) ){
+			sh.CurrentDirectory = strPath;
+			isExist = true;
+		}
+		else{
+			isExist = false;
+		}
+		
+		sh = null;
+		fso = null;
+		return isExist;
+	}
+	
+	
+	//--------------------------------------------------
+	// 日付フォーマット作成用関数 yyyymmdd
+	function getFormatedDate(dtDate){
+		var strDate; //日付文字列
+		
+		strDate = '';
+		strDate += dtDate.getYear(); //年 yyyy
+		strDate += formatString(dtDate.getMonth()+1, 2); //月 mm
+		strDate += formatString(dtDate.getDate(), 2); //日 dd
+		
+		
+		//yyyymmddのフォーマットで日付を返す
+		return strDate;
+	}
+	
+	//--------------------------------------------------
+	// 時刻フォーマット作成用関数 hh24miss
+	function getFormatedTime(dtDate){
+		var strTime; //時刻文字列
+		strTime = '';
+		strTime += formatString(dtDate.getHours(), 2); //時 hh
+		strTime += '';
+		strTime += formatString(dtDate.getMinutes(), 2); //分 mi
+		strTime += '';
+		strTime += formatString(dtDate.getSeconds(), 2); //秒 ss
+		
+		//hhmissのフォーマットで時刻を返す
+		return strTime;
+	}
+	
+	
+	//--------------------------------------------------
+	// ローカルPCのユーザIDを取得する
+	function getLocalUserID(){
+		var strUserID;
+		var objNetWork;
+		
+		try {
+	        objNetWork = new ActiveXObject('WScript.Network');
+	        strUserID = objNetWork.UserName;
+	        objNetWork = null;
+		}
+		catch(e){
+			strUserID = '';
+		}
+		
+		return strUserID;
+	}
+	
+	//--------------------------------------------------
+	// 数列の桁数をそろえる
+	// 例）2→02にする。
+	// numStrLen 返す文字列の長さを指定
+	function formatString(strNum, numStrLen){
+		var strBuf;
+		var i;
+		
+		strBuf = '' + strNum;
+		//元の文字よりも返す文字列の指定のほうが短い場合は何もしない
+		if(strBuf.length < numStrLen){
+			// 数値の前に0を付与
+			for(i=strBuf.length; i < numStrLen; i++){
+				strBuf = '0' + strBuf;
+			}
+		}
+		return strBuf;
+	}
+</script>
+</job>
